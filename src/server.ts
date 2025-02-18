@@ -1,7 +1,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 const bcrypt = require("bcrypt");
 import jwt from "jsonwebtoken";
-import { db, users, roles, companies } from "./db";
+import { db, users, roles, companies, permissions, rolePermissions } from "./db";
 import { eq } from "drizzle-orm";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -83,7 +83,60 @@ app.post('/api/register-super-admin', async (req: Request, res: Response) => {
   }
 });
 
-// Add User
+//add get roles with id and permissions
+//@ts-ignore
+app.get('/api/roles', async (req: Request, res: Response) => {
+  try {
+    // Get all roles with their permissions
+    const rolesWithPermissions = await db
+      .select({
+        roleId: roles.id,
+        roleName: roles.name,
+        permissionId: permissions.id,
+        permissionName: permissions.name,
+      })
+      .from(roles)
+      .leftJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
+      .leftJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .execute();
+
+    // Group permissions by role
+    const formattedRoles = rolesWithPermissions.reduce((acc: any[], curr) => {
+      const existingRole = acc.find(role => role.id === curr.roleId);
+
+      if (existingRole) {
+        // Add permission to existing role if it's not null
+        if (curr.permissionId) {
+          existingRole.permissions.push({
+            id: curr.permissionId,
+            name: curr.permissionName,
+          });
+        }
+      } else {
+        // Create new role entry
+        acc.push({
+          id: curr.roleId,
+          name: curr.roleName,
+          permissions: curr.permissionId
+            ? [{
+                id: curr.permissionId,
+                name: curr.permissionName,
+              }]
+            : [],
+        });
+      }
+
+      return acc;
+    }, []);
+
+    return res.status(200).json(formattedRoles);
+  } catch (error) {
+    console.error('Error fetching roles:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Add User with role
 //@ts-ignore
 app.post("/api/users", async (req: Request, res: Response, next: NextFunction) => {
   try {
