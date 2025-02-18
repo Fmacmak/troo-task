@@ -1,7 +1,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, users, roles } from "./db";
+import { db, users, roles, companies } from "./db";
 import { eq } from "drizzle-orm";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -47,7 +47,6 @@ app.get('/health', (req: Request, res: Response) => {
 
 
 // Super Admin Registration
-// app.post("/api/register-super-admin", async (req: Request, res: Response) => {
 app.post('/api/register-super-admin', async (req: Request, res: Response) => {
 
   try {
@@ -60,11 +59,19 @@ app.post('/api/register-super-admin', async (req: Request, res: Response) => {
         res.status(400).json({ error: "Super Admin role does not exist" });
     }
 
+    const newCompany = await db.insert(companies)
+      .values({
+        companyName,
+      })
+      .returning({ insertedId: companies.id })
+      .execute();
+
     await db.insert(users).values({
       fullname,
       email,
       password: hashedPassword,
       roleId: adminRole[0].id,
+      companyId: newCompany[0].insertedId,
     }).execute();
 
     res.status(201).json({ message: "Super Admin registered successfully" });
