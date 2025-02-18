@@ -1,11 +1,14 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
-import bcrypt from "bcryptjs";
+const bcrypt = require("bcrypt");
 import jwt from "jsonwebtoken";
 import { db, users, roles, companies } from "./db";
 import { eq } from "drizzle-orm";
 import helmet from "helmet";
 import morgan from "morgan";
 import cors from "cors";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app: Application = express();
 
@@ -14,7 +17,7 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use(cors());
 app.use(express.json());
-
+app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 3000;
 
@@ -81,35 +84,42 @@ app.post('/api/register-super-admin', async (req: Request, res: Response) => {
 });
 
 // Add User
+//@ts-ignore
 app.post("/api/users", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { fullname, email, roleId, password } = req.body;
+    console.log(req.body)
+    const { fullname, email, roleId, password, companyId } = req.body;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // const hashedPassword = await bcrypt.hash(password, 'troo');
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
     const existingUser = await db.select().from(users).where(eq(users.email, email)).execute();
     if (existingUser.length > 0) {
-        res.status(400).json({ error: "User already exists" });
+        return res.status(400).json({ error: "User already exists" });
     }
 
-    await db.insert(users).values({ fullname, email, roleId, password: hashedPassword }).execute();
+    await db.insert(users).values({ fullname, email, roleId, password: hashedPassword, companyId }).execute();
 
-    res.status(201).json({ message: "User added successfully" });
+    return res.status(201).json({ message: "User added successfully" });
   } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
+    console.log(error)
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Login
+//@ts-ignore
 app.post("/api/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
     const user = await db.select().from(users).where(eq(users.email, email)).execute();
-    if (!user.length)  res.status(400).json({ error: "Invalid email or password" });
+    if (!user.length)  return res.status(400).json({ error: "Invalid email or password" });
 
     const validPassword = await bcrypt.compare(password, user[0].password);
-    if (!validPassword)  res.status(400).json({ error: "Invalid email or password" });
+    if (!validPassword)  return res.status(400).json({ error: "Invalid email or password" });
 
     const token = jwt.sign(
       { userId: user[0].id, role: user[0].roleId },
@@ -117,9 +127,10 @@ app.post("/api/login", async (req: Request, res: Response) => {
       { expiresIn: "1h" }
     );
 
-    res.json({ token });
+    return res.json({ token });
   } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
+    console.log(error)
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
